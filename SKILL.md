@@ -353,6 +353,24 @@ item_create:
   value_type: 3    # unsigned integer (process count)
 ```
 
+#### 5d: Service Tree (Zabbix Dashboard)
+
+The Zabbix dashboard at `https://zabbix.crunchtools.com/service-tree.php` displays all monitored services in a visual tree. New MCP servers must be added to the service tree so they appear on the dashboard.
+
+The service-tree.php file lives at `/srv/zabbix.crunchtools.com/code/service-tree.php` on Lotor (mounted into the Zabbix container). It queries Zabbix for `web.test.fail` (web scenarios), `net.tcp.service` (port checks), and `svc.*` (trapper items) and renders them as a status tree.
+
+To add the new MCP server to the dashboard:
+
+1. SSH to Lotor and edit `/srv/zabbix.crunchtools.com/code/service-tree.php`
+2. Add the MCP server's port to the TCP check display section
+3. Add the `svc.mcp-<name>` trapper item to the `$svc_display_names` array:
+   ```php
+   'svc.mcp-<name>' => 'MCP <Name>',
+   ```
+4. Verify the new entry appears at `https://zabbix.crunchtools.com/service-tree.php`
+
+MCP servers are loopback-only (no public HTTPS), so they appear in the service tree under lotor's TCP port checks and process checks, not as separate hosts with web scenarios.
+
 **Do NOT proceed to Phase 8 until the server responds and Zabbix monitoring is configured.**
 
 ---
