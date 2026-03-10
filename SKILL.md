@@ -411,21 +411,11 @@ skopeo inspect docker://ghcr.io/crunchtools/mcp-<name>:<VERSION>
 
 If GHCR packages are private, tell user to make them public at `https://github.com/orgs/crunchtools/packages`.
 
-### Step 5: Publish to MCP Registry
-
-```bash
-cd ~/Projects/crunchtools/mcp-<name> && mcp-publisher validate && mcp-publisher publish
-```
-
-### Step 6: Update CrunchTools Website
-
-Update the MCP Servers page on crunchtools.com (WordPress page ID 6129) using `wordpress_get_page` and `wordpress_update_page`. Add the new server to the table in alphabetical order.
-
-### Step 7: Fleet Watchdog Repository Monitoring
+### Step 5: Fleet Watchdog Repository Monitoring
 
 The fleet watchdog (`crunchtools/factory`) monitors all CrunchTools repos in Zabbix across 5 dimensions every 15 minutes. The new repo must be added to the watchdog and its corresponding Zabbix trapper items created.
 
-#### 7a: Add to fleet-watchdog.py
+#### 5a: Add to fleet-watchdog.py
 
 Clone or pull `~/Projects/crunchtools/factory/` and edit `fleet-watchdog.py`:
 
@@ -433,7 +423,7 @@ Clone or pull `~/Projects/crunchtools/factory/` and edit `fleet-watchdog.py`:
 2. Add `"mcp-<name>"` to the `MCP_REPOS` list (alphabetical order)
 3. Commit and push
 
-#### 7b: Create Zabbix Trapper Items
+#### 5b: Create Zabbix Trapper Items
 
 Create trapper items on the `factory.crunchtools.com` host (hostid `10700`) for each monitoring dimension. All items are type `2` (Zabbix trapper).
 
@@ -456,7 +446,7 @@ Create trapper items on the `factory.crunchtools.com` host (hostid `10700`) for 
 
 Use the `mcp__zabbix__item_create` tool. If the Zabbix MCP server is in read-only mode, tell the user to create the items manually via the Zabbix web UI.
 
-#### 7c: Create Zabbix Triggers
+#### 5c: Create Zabbix Triggers
 
 Create triggers on `factory.crunchtools.com` for the new repo:
 
@@ -469,7 +459,7 @@ Create triggers on `factory.crunchtools.com` for the new repo:
 
 All triggers should have tags: `{"tag": "service", "value": "fleet-watchdog"}` and `{"tag": "repo", "value": "mcp-<name>"}`.
 
-#### 7d: Deploy Updated Watchdog
+#### 5d: Deploy Updated Watchdog
 
 On Lotor, pull the updated factory container and restart:
 
@@ -479,6 +469,16 @@ systemctl --user restart factory.crunchtools.com.service
 ```
 
 Verify the new repo appears in the next watchdog run by checking the container logs.
+
+### Step 6: Publish to MCP Registry
+
+```bash
+cd ~/Projects/crunchtools/mcp-<name> && mcp-publisher validate && mcp-publisher publish
+```
+
+### Step 7: Update CrunchTools Website
+
+Update the MCP Servers page on crunchtools.com (WordPress page ID 6129) using `wordpress_get_page` and `wordpress_update_page`. Add the new server to the table in alphabetical order.
 
 ---
 
