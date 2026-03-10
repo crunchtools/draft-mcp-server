@@ -2,7 +2,7 @@
 name: draft-mcp-server
 description: Build a complete CrunchTools MCP server from scratch — API research, scaffolding, implementation, testing, and registry publishing
 argument-hint: "[service-name, e.g. mediawiki, jira, slack]"
-allowed-tools: Read, Write, Edit, Bash, AskUserQuestion, Grep, Glob, WebFetch, WebSearch, EnterPlanMode, ExitPlanMode, Task, mcp__memory__memory_search, mcp__memory__memory_store, mcp__mcp-wordpress-crunchtools__wordpress_get_page, mcp__mcp-wordpress-crunchtools__wordpress_update_page
+allowed-tools: Read, Write, Edit, Bash, AskUserQuestion, Grep, Glob, WebFetch, WebSearch, EnterPlanMode, ExitPlanMode, Task, mcp__memory__memory_search, mcp__memory__memory_store, mcp__mcp-wordpress-crunchtools__wordpress_get_page, mcp__mcp-wordpress-crunchtools__wordpress_update_page, mcp__zabbix__item_create, mcp__zabbix__item_get, mcp__zabbix__trigger_create, mcp__zabbix__trigger_get, mcp__zabbix__hostgroup_get
 ---
 
 # Build a CrunchTools MCP Server
@@ -281,13 +281,83 @@ skopeo inspect docker://ghcr.io/crunchtools/mcp-<name>:<VERSION>
 
 If GHCR packages are private, tell user to make them public at `https://github.com/orgs/crunchtools/packages`.
 
-### Step 5: Publish to MCP Registry
+### Step 5: Factory Watchdog Repository Monitoring
+
+The factory watchdog (`crunchtools/factory`) monitors all CrunchTools repos in Zabbix across 5 dimensions every 15 minutes. This monitors the **code factory** — GHA status, version sync, artifact sync, constitution validation, and open issues.
+
+#### 5a: Add to fleet-watchdog.py
+
+Clone or pull `~/Projects/crunchtools/factory/` and edit `fleet-watchdog.py`:
+
+1. Add `"mcp-<name>"` to the `REPOS` list (alphabetical order)
+2. Add `"mcp-<name>"` to the `MCP_REPOS` list (alphabetical order)
+3. Commit and push
+
+#### 5b: Create Zabbix Trapper Items
+
+Create trapper items on the `factory.crunchtools.com` host (hostid `10700`) for each monitoring dimension. All items are type `2` (Zabbix trapper).
+
+**All repos get these items:**
+
+| Item Name | Key | value_type |
+|-----------|-----|------------|
+| Fleet GHA mcp-\<name\> | `fleet.gha[mcp-<name>]` | 3 (unsigned int) |
+| Fleet Constitution mcp-\<name\> | `fleet.constitution[mcp-<name>]` | 3 (unsigned int) |
+| Fleet Constitution Violations mcp-\<name\> | `fleet.constitution.violations[mcp-<name>]` | 4 (text) |
+| Fleet Issues mcp-\<name\> | `fleet.issues.open[mcp-<name>]` | 3 (unsigned int) |
+
+**MCP repos also get these items:**
+
+| Item Name | Key | value_type |
+|-----------|-----|------------|
+| Fleet Version Sync mcp-\<name\> | `fleet.version.sync[mcp-<name>]` | 3 (unsigned int) |
+| Fleet Version mcp-\<name\> | `fleet.version[mcp-<name>]` | 4 (text) |
+| Fleet Artifact Sync mcp-\<name\> | `fleet.artifact.sync[mcp-<name>]` | 3 (unsigned int) |
+
+Use the `mcp__zabbix__item_create` tool. If the Zabbix MCP server is in read-only mode, tell the user to create the items manually via the Zabbix web UI.
+
+#### 5c: Create Zabbix Triggers
+
+Create triggers on `factory.crunchtools.com` for the new repo:
+
+| Trigger | Expression | Priority |
+|---------|-----------|----------|
+| GHA failure | `last(/factory.crunchtools.com/fleet.gha[mcp-<name>])=0` | 2 (WARNING) |
+| Version desync | `last(/factory.crunchtools.com/fleet.version.sync[mcp-<name>])=0` | 4 (HIGH) |
+| Artifact desync | `last(/factory.crunchtools.com/fleet.artifact.sync[mcp-<name>])=0` | 2 (WARNING) |
+| Constitution violation | `last(/factory.crunchtools.com/fleet.constitution[mcp-<name>])=0` | 4 (HIGH) |
+
+All triggers should have tags: `{"tag": "service", "value": "fleet-watchdog"}` and `{"tag": "repo", "value": "mcp-<name>"}`.
+
+#### 5d: Deploy Updated Watchdog
+
+On Lotor, pull the updated factory container and restart:
+
+```bash
+podman pull quay.io/crunchtools/factory:latest
+systemctl --user restart factory.crunchtools.com.service
+```
+
+Verify the new repo appears in the next watchdog run by checking the container logs.
+
+#### 5e: Service Tree (Factory Dashboard)
+
+The factory watchdog items must also appear in service-tree.php under the `factory.crunchtools.com` section. SSH to Lotor and edit `/srv/zabbix.crunchtools.com/code/service-tree.php`:
+
+1. Add the `fleet.gha[mcp-<name>]` item to the factory GHA status display section
+2. Add the `fleet.version.sync[mcp-<name>]` item to the version sync display section
+3. Add the `fleet.artifact.sync[mcp-<name>]` item to the artifact sync display section
+4. Add the `fleet.constitution[mcp-<name>]` item to the constitution display section
+5. Add the `fleet.issues.open[mcp-<name>]` item to the issues display section
+6. Verify the new repo appears under factory.crunchtools.com at `https://zabbix.crunchtools.com/service-tree.php`
+
+### Step 6: Publish to MCP Registry
 
 ```bash
 cd ~/Projects/crunchtools/mcp-<name> && mcp-publisher validate && mcp-publisher publish
 ```
 
-### Step 6: Update CrunchTools Website
+### Step 7: Update CrunchTools Website
 
 Update the MCP Servers page on crunchtools.com (WordPress page ID 6129) using `wordpress_get_page` and `wordpress_update_page`. Add the new server to the table in alphabetical order.
 
@@ -316,6 +386,7 @@ PyPI:           https://pypi.org/project/mcp-<name>-crunchtools/
 Quay.io:        quay.io/crunchtools/mcp-<name>:0.1.0
 GHCR:           ghcr.io/crunchtools/mcp-<name>:0.1.0
 MCP Registry:   io.github.crunchtools/<name>
+Factory:          factory.crunchtools.com — GHA, version, artifact, constitution, issues
 WordPress:      https://crunchtools.com/software/mcp-servers/
 
 Next: /deploy-mcp-server <name>
