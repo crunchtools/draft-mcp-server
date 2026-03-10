@@ -2,7 +2,7 @@
 name: draft-mcp-server
 description: Build a complete CrunchTools MCP server from scratch — API research, scaffolding, implementation, testing, deployment, and registry publishing
 argument-hint: "[service-name, e.g. mediawiki, jira, slack]"
-allowed-tools: Read, Write, Edit, Bash, AskUserQuestion, Grep, Glob, WebFetch, WebSearch, EnterPlanMode, ExitPlanMode, Task, mcp__memory__memory_search, mcp__memory__memory_store, mcp__mcp-wordpress-crunchtools__wordpress_get_page, mcp__mcp-wordpress-crunchtools__wordpress_update_page
+allowed-tools: Read, Write, Edit, Bash, AskUserQuestion, Grep, Glob, WebFetch, WebSearch, EnterPlanMode, ExitPlanMode, Task, mcp__memory__memory_search, mcp__memory__memory_store, mcp__mcp-wordpress-crunchtools__wordpress_get_page, mcp__mcp-wordpress-crunchtools__wordpress_update_page, mcp__zabbix__host_get, mcp__zabbix__item_create, mcp__zabbix__item_get, mcp__zabbix__trigger_create, mcp__zabbix__trigger_get, mcp__zabbix__hostgroup_get, mcp__zabbix__httptest_create
 ---
 
 # Build a CrunchTools MCP Server
@@ -300,7 +300,60 @@ Add to `~/.claude.json`:
 
 Test the MCP tools work by calling a read operation (e.g., site info, search, list).
 
-**Do NOT proceed to Phase 8 until the server responds.**
+### Step 5: Zabbix Monitoring
+
+All MCP servers on Lotor get three-layer Zabbix monitoring. The monitoring items live on the lotor host (hostid `10698`, interfaceid `45`), not on separate Zabbix hosts.
+
+#### 5a: TCP Port Check
+
+Create a `net.tcp.service` item on lotor to verify the MCP server port is reachable:
+
+```
+item_create:
+  name: "MCP <Name> Port <PORT>"
+  key_: "net.tcp.service[http,127.0.0.1,<PORT>]"
+  hostid: "10698"
+  type: 0          # Zabbix agent
+  value_type: 3    # unsigned integer (1=up, 0=down)
+  delay: "1m"
+```
+
+Use the `mcp__zabbix__item_create` tool. If the Zabbix MCP server is in read-only mode, tell the user to create the item manually via the Zabbix web UI or enable Zabbix writes temporarily.
+
+#### 5b: TCP Port Trigger
+
+Create a trigger that fires when the port is unreachable for 5 minutes:
+
+```
+trigger_create:
+  description: "MCP <Name> port <PORT> is unreachable"
+  expression: "max(/lotor.dc3.crunchtools.com/net.tcp.service[http,127.0.0.1,<PORT>],5m)=0"
+  priority: 4      # HIGH
+  tags: [{"tag": "host", "value": "lotor.dc3.crunchtools.com"}, {"tag": "service", "value": "mcp-<name>"}]
+```
+
+#### 5c: service-checker.py
+
+Tell the user to add the new container to `/srv/zabbix-agent/scripts/service-checker.py` on Lotor. The entry format is:
+
+```python
+("mcp-<name>", "svc.mcp-<name>", "python"),
+```
+
+This checks that a Python process is running inside the container via `podman exec mcp-<name> pgrep -c python` and sends the count to Zabbix via the trapper protocol every 60 seconds.
+
+A corresponding trapper item must also be created on lotor:
+
+```
+item_create:
+  name: "MCP <Name> Process"
+  key_: "svc.mcp-<name>"
+  hostid: "10698"
+  type: 2          # Zabbix trapper
+  value_type: 3    # unsigned integer (process count)
+```
+
+**Do NOT proceed to Phase 8 until the server responds and Zabbix monitoring is configured.**
 
 ---
 
@@ -375,5 +428,6 @@ Quay.io:        quay.io/crunchtools/mcp-<name>:0.1.0
 GHCR:           ghcr.io/crunchtools/mcp-<name>:0.1.0
 MCP Registry:   io.github.crunchtools/<name>
 Systemd:        mcp-<name>.service (port <PORT>)
+Zabbix:         TCP port check + trapper process check on lotor (10698)
 WordPress:      https://crunchtools.com/software/mcp-servers/
 ```
