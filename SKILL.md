@@ -470,6 +470,17 @@ systemctl --user restart factory.crunchtools.com.service
 
 Verify the new repo appears in the next watchdog run by checking the container logs.
 
+#### 5e: Service Tree (Factory Dashboard)
+
+The fleet watchdog items must also appear in service-tree.php under the `factory.crunchtools.com` section. SSH to Lotor and edit `/srv/zabbix.crunchtools.com/code/service-tree.php`:
+
+1. Add the `fleet.gha[mcp-<name>]` item to the factory GHA status display section
+2. Add the `fleet.version.sync[mcp-<name>]` item to the version sync display section
+3. Add the `fleet.artifact.sync[mcp-<name>]` item to the artifact sync display section
+4. Add the `fleet.constitution[mcp-<name>]` item to the constitution display section
+5. Add the `fleet.issues.open[mcp-<name>]` item to the issues display section
+6. Verify the new repo appears under factory.crunchtools.com at `https://zabbix.crunchtools.com/service-tree.php`
+
 ### Step 6: Publish to MCP Registry
 
 ```bash
