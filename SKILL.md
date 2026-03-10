@@ -1,8 +1,8 @@
 ---
 name: draft-mcp-server
-description: Build a complete CrunchTools MCP server from scratch — API research, scaffolding, implementation, testing, deployment, and registry publishing
+description: Build a complete CrunchTools MCP server from scratch — API research, scaffolding, implementation, testing, and registry publishing
 argument-hint: "[service-name, e.g. mediawiki, jira, slack]"
-allowed-tools: Read, Write, Edit, Bash, AskUserQuestion, Grep, Glob, WebFetch, WebSearch, EnterPlanMode, ExitPlanMode, Task, mcp__memory__memory_search, mcp__memory__memory_store, mcp__mcp-wordpress-crunchtools__wordpress_get_page, mcp__mcp-wordpress-crunchtools__wordpress_update_page, mcp__zabbix__host_get, mcp__zabbix__item_create, mcp__zabbix__item_get, mcp__zabbix__trigger_create, mcp__zabbix__trigger_get, mcp__zabbix__hostgroup_get, mcp__zabbix__httptest_create
+allowed-tools: Read, Write, Edit, Bash, AskUserQuestion, Grep, Glob, WebFetch, WebSearch, EnterPlanMode, ExitPlanMode, Task, mcp__memory__memory_search, mcp__memory__memory_store, mcp__mcp-wordpress-crunchtools__wordpress_get_page, mcp__mcp-wordpress-crunchtools__wordpress_update_page
 ---
 
 # Build a CrunchTools MCP Server
@@ -72,7 +72,7 @@ Include this section in every plan so the user can work on these tasks in parall
 ```
 ## While I build, you can set up:
 
-1. **PyPI Trusted Publishing** (required for Phase 8)
+1. **PyPI Trusted Publishing** (required for Phase 7)
    - Go to: https://pypi.org/manage/account/publishing/
    - Add pending publisher:
      - PyPI project: mcp-<name>-crunchtools
@@ -81,7 +81,7 @@ Include this section in every plan so the user can work on these tasks in parall
      - Workflow: publish.yml
      - Environment: (leave blank)
 
-2. **Quay.io Repository** (required for Phase 8)
+2. **Quay.io Repository** (required for Phase 7)
    - Go to: https://quay.io/new/?namespace=crunchtools
    - Create repository: mcp-<name>
    - Visibility: public
@@ -245,137 +245,7 @@ Install pre-commit hooks: `pre-commit install`
 
 ---
 
-## Phase 7: Deploy Locally
-
-### Step 1: Create Environment File
-
-```bash
-cat > ~/.config/mcp-env/mcp-<name>.env << 'EOF'
-<SERVICE_URL>=https://...
-<SERVICE_TOKEN>=...
-EOF
-```
-
-Ask the user for the actual credential values.
-
-### Step 2: Create systemd Service
-
-```bash
-cat > ~/.config/systemd/user/mcp-<name>.service << 'EOF'
-[Unit]
-Description=MCP <Name> Server (Streamable HTTP)
-After=network-online.target
-
-[Service]
-Type=simple
-EnvironmentFile=%h/.config/mcp-env/mcp-<name>.env
-ExecStart=/usr/bin/podman run --rm --name mcp-<name> \
-    --network host \
-    --env-file %h/.config/mcp-env/mcp-<name>.env \
-    quay.io/crunchtools/mcp-<name>:latest \
-    --transport streamable-http --host 127.0.0.1 --port <PORT>
-ExecStop=/usr/bin/podman stop mcp-<name>
-Restart=on-failure
-RestartSec=10
-
-[Install]
-WantedBy=default.target
-EOF
-
-systemctl --user daemon-reload
-systemctl --user enable --now mcp-<name>.service
-```
-
-### Step 3: Add to Claude Code Config
-
-Add to `~/.claude.json`:
-```json
-"mcp-<name>-crunchtools": {
-    "type": "http",
-    "url": "http://127.0.0.1:<PORT>/mcp"
-}
-```
-
-### Step 4: Verify
-
-Test the MCP tools work by calling a read operation (e.g., site info, search, list).
-
-### Step 5: Zabbix Monitoring
-
-All MCP servers on Lotor get three-layer Zabbix monitoring. The monitoring items live on the lotor host (hostid `10698`, interfaceid `45`), not on separate Zabbix hosts.
-
-#### 5a: TCP Port Check
-
-Create a `net.tcp.service` item on lotor to verify the MCP server port is reachable:
-
-```
-item_create:
-  name: "MCP <Name> Port <PORT>"
-  key_: "net.tcp.service[http,127.0.0.1,<PORT>]"
-  hostid: "10698"
-  type: 0          # Zabbix agent
-  value_type: 3    # unsigned integer (1=up, 0=down)
-  delay: "1m"
-```
-
-Use the `mcp__zabbix__item_create` tool. If the Zabbix MCP server is in read-only mode, tell the user to create the item manually via the Zabbix web UI or enable Zabbix writes temporarily.
-
-#### 5b: TCP Port Trigger
-
-Create a trigger that fires when the port is unreachable for 5 minutes:
-
-```
-trigger_create:
-  description: "MCP <Name> port <PORT> is unreachable"
-  expression: "max(/lotor.dc3.crunchtools.com/net.tcp.service[http,127.0.0.1,<PORT>],5m)=0"
-  priority: 4      # HIGH
-  tags: [{"tag": "host", "value": "lotor.dc3.crunchtools.com"}, {"tag": "service", "value": "mcp-<name>"}]
-```
-
-#### 5c: service-checker.py
-
-Tell the user to add the new container to `/srv/zabbix-agent/scripts/service-checker.py` on Lotor. The entry format is:
-
-```python
-("mcp-<name>", "svc.mcp-<name>", "python"),
-```
-
-This checks that a Python process is running inside the container via `podman exec mcp-<name> pgrep -c python` and sends the count to Zabbix via the trapper protocol every 60 seconds.
-
-A corresponding trapper item must also be created on lotor:
-
-```
-item_create:
-  name: "MCP <Name> Process"
-  key_: "svc.mcp-<name>"
-  hostid: "10698"
-  type: 2          # Zabbix trapper
-  value_type: 3    # unsigned integer (process count)
-```
-
-#### 5d: Service Tree (Zabbix Dashboard)
-
-The Zabbix dashboard at `https://zabbix.crunchtools.com/service-tree.php` displays all monitored services in a visual tree. New MCP servers must be added to the service tree so they appear on the dashboard.
-
-The service-tree.php file lives at `/srv/zabbix.crunchtools.com/code/service-tree.php` on Lotor (mounted into the Zabbix container). It queries Zabbix for `web.test.fail` (web scenarios), `net.tcp.service` (port checks), and `svc.*` (trapper items) and renders them as a status tree.
-
-To add the new MCP server to the dashboard:
-
-1. SSH to Lotor and edit `/srv/zabbix.crunchtools.com/code/service-tree.php`
-2. Add the MCP server's port to the TCP check display section
-3. Add the `svc.mcp-<name>` trapper item to the `$svc_display_names` array:
-   ```php
-   'svc.mcp-<name>' => 'MCP <Name>',
-   ```
-4. Verify the new entry appears at `https://zabbix.crunchtools.com/service-tree.php`
-
-MCP servers are loopback-only (no public HTTPS), so they appear in the service tree under lotor's TCP port checks and process checks, not as separate hosts with web scenarios.
-
-**Do NOT proceed to Phase 8 until the server responds and Zabbix monitoring is configured.**
-
----
-
-## Phase 8: Publish
+## Phase 7: Publish
 
 ### Step 1: Version Bump (skip for initial v0.1.0 release)
 
@@ -411,95 +281,26 @@ skopeo inspect docker://ghcr.io/crunchtools/mcp-<name>:<VERSION>
 
 If GHCR packages are private, tell user to make them public at `https://github.com/orgs/crunchtools/packages`.
 
-### Step 5: Fleet Watchdog Repository Monitoring
-
-The fleet watchdog (`crunchtools/factory`) monitors all CrunchTools repos in Zabbix across 5 dimensions every 15 minutes. The new repo must be added to the watchdog and its corresponding Zabbix trapper items created.
-
-#### 5a: Add to fleet-watchdog.py
-
-Clone or pull `~/Projects/crunchtools/factory/` and edit `fleet-watchdog.py`:
-
-1. Add `"mcp-<name>"` to the `REPOS` list (alphabetical order)
-2. Add `"mcp-<name>"` to the `MCP_REPOS` list (alphabetical order)
-3. Commit and push
-
-#### 5b: Create Zabbix Trapper Items
-
-Create trapper items on the `factory.crunchtools.com` host (hostid `10700`) for each monitoring dimension. All items are type `2` (Zabbix trapper).
-
-**All repos get these items:**
-
-| Item Name | Key | value_type |
-|-----------|-----|------------|
-| Fleet GHA mcp-\<name\> | `fleet.gha[mcp-<name>]` | 3 (unsigned int) |
-| Fleet Constitution mcp-\<name\> | `fleet.constitution[mcp-<name>]` | 3 (unsigned int) |
-| Fleet Constitution Violations mcp-\<name\> | `fleet.constitution.violations[mcp-<name>]` | 4 (text) |
-| Fleet Issues mcp-\<name\> | `fleet.issues.open[mcp-<name>]` | 3 (unsigned int) |
-
-**MCP repos also get these items:**
-
-| Item Name | Key | value_type |
-|-----------|-----|------------|
-| Fleet Version Sync mcp-\<name\> | `fleet.version.sync[mcp-<name>]` | 3 (unsigned int) |
-| Fleet Version mcp-\<name\> | `fleet.version[mcp-<name>]` | 4 (text) |
-| Fleet Artifact Sync mcp-\<name\> | `fleet.artifact.sync[mcp-<name>]` | 3 (unsigned int) |
-
-Use the `mcp__zabbix__item_create` tool. If the Zabbix MCP server is in read-only mode, tell the user to create the items manually via the Zabbix web UI.
-
-#### 5c: Create Zabbix Triggers
-
-Create triggers on `factory.crunchtools.com` for the new repo:
-
-| Trigger | Expression | Priority |
-|---------|-----------|----------|
-| GHA failure | `last(/factory.crunchtools.com/fleet.gha[mcp-<name>])=0` | 2 (WARNING) |
-| Version desync | `last(/factory.crunchtools.com/fleet.version.sync[mcp-<name>])=0` | 4 (HIGH) |
-| Artifact desync | `last(/factory.crunchtools.com/fleet.artifact.sync[mcp-<name>])=0` | 2 (WARNING) |
-| Constitution violation | `last(/factory.crunchtools.com/fleet.constitution[mcp-<name>])=0` | 4 (HIGH) |
-
-All triggers should have tags: `{"tag": "service", "value": "fleet-watchdog"}` and `{"tag": "repo", "value": "mcp-<name>"}`.
-
-#### 5d: Deploy Updated Watchdog
-
-On Lotor, pull the updated factory container and restart:
-
-```bash
-podman pull quay.io/crunchtools/factory:latest
-systemctl --user restart factory.crunchtools.com.service
-```
-
-Verify the new repo appears in the next watchdog run by checking the container logs.
-
-#### 5e: Service Tree (Factory Dashboard)
-
-The fleet watchdog items must also appear in service-tree.php under the `factory.crunchtools.com` section. SSH to Lotor and edit `/srv/zabbix.crunchtools.com/code/service-tree.php`:
-
-1. Add the `fleet.gha[mcp-<name>]` item to the factory GHA status display section
-2. Add the `fleet.version.sync[mcp-<name>]` item to the version sync display section
-3. Add the `fleet.artifact.sync[mcp-<name>]` item to the artifact sync display section
-4. Add the `fleet.constitution[mcp-<name>]` item to the constitution display section
-5. Add the `fleet.issues.open[mcp-<name>]` item to the issues display section
-6. Verify the new repo appears under factory.crunchtools.com at `https://zabbix.crunchtools.com/service-tree.php`
-
-### Step 6: Publish to MCP Registry
+### Step 5: Publish to MCP Registry
 
 ```bash
 cd ~/Projects/crunchtools/mcp-<name> && mcp-publisher validate && mcp-publisher publish
 ```
 
-### Step 7: Update CrunchTools Website
+### Step 6: Update CrunchTools Website
 
 Update the MCP Servers page on crunchtools.com (WordPress page ID 6129) using `wordpress_get_page` and `wordpress_update_page`. Add the new server to the table in alphabetical order.
 
 ---
 
-## Phase 9: Store in Memory
+## Phase 8: Store in Memory
 
 Store the build details using `memory_store`:
 - Server name, version, tool count
 - Architecture decisions (auth model, API style, pagination)
-- Deployment details (port, systemd service, env vars)
 - Any gotchas or special handling discovered during the build
+
+After publishing, deploy with `/deploy-mcp-server <name>`.
 
 ---
 
@@ -515,8 +316,7 @@ PyPI:           https://pypi.org/project/mcp-<name>-crunchtools/
 Quay.io:        quay.io/crunchtools/mcp-<name>:0.1.0
 GHCR:           ghcr.io/crunchtools/mcp-<name>:0.1.0
 MCP Registry:   io.github.crunchtools/<name>
-Systemd:        mcp-<name>.service (port <PORT>)
-Zabbix:         TCP port check + trapper process check on lotor (10698)
-Fleet:          factory.crunchtools.com — GHA, version, artifact, constitution, issues
 WordPress:      https://crunchtools.com/software/mcp-servers/
+
+Next: /deploy-mcp-server <name>
 ```
