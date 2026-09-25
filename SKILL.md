@@ -45,7 +45,7 @@ Use `WebFetch` and `WebSearch` to read API documentation.
 ### Step 3: Design the Tool Inventory
 
 Ask the user with `AskUserQuestion`:
-- **Scope**: Comprehensive (full API coverage), read-heavy + basic editing, or minimal v0.1?
+- **Scope**: Full API coverage, read-heavy + basic editing, or minimal v0.1?
 - **Authentication**: Confirm the auth model discovered in research
 - **HTTP port**: Next available port for streamable-http transport (check existing ports in memory)
 
