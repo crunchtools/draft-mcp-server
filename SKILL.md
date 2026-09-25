@@ -222,7 +222,8 @@ Run the five gates defined in the MCP Server profile (Section V), in order:
 uv run ruff check src tests         # 1. Lint
 uv run mypy src                     # 2. Type check
 uv run pytest -v                    # 3. Tests
-podman build -f Containerfile .     # 4. Container build
+podman run --rm -v .:/src:Z -w /src quay.io/crunchtools/gourmand:latest check --full   # 4. AI slop detection
+podman build -f Containerfile .     # 5. Container build
 ```
 
 **Do NOT proceed to Phase 6 until all gates pass.**
