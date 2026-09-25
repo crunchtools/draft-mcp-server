@@ -2,7 +2,7 @@
 name: draft-mcp-server
 description: Build a complete CrunchTools MCP server from scratch — API research, scaffolding, implementation, testing, and registry publishing
 argument-hint: "[service-name, e.g. mediawiki, jira, slack]"
-allowed-tools: Read, Write, Edit, Bash, AskUserQuestion, Grep, Glob, WebFetch, WebSearch, EnterPlanMode, ExitPlanMode, Task, mcp__memory__memory_search, mcp__memory__memory_store, mcp__mcp-wordpress-crunchtools__wordpress_get_page, mcp__mcp-wordpress-crunchtools__wordpress_update_page, mcp__zabbix__item_create, mcp__zabbix__item_get, mcp__zabbix__trigger_create, mcp__zabbix__trigger_get, mcp__zabbix__hostgroup_get
+allowed-tools: Read, Write, Edit, Bash, AskUserQuestion, Grep, Glob, WebFetch, WebSearch, EnterPlanMode, ExitPlanMode, Agent, mcp__trentina__memory__memory_search, mcp__trentina__memory__memory_store, mcp__trentina__nagios__nagios_host_status_tool, mcp__trentina__nagios__nagios_service_status_tool
 ---
 
 # Build a CrunchTools MCP Server
@@ -222,8 +222,7 @@ Run the five gates defined in the MCP Server profile (Section V), in order:
 uv run ruff check src tests         # 1. Lint
 uv run mypy src                     # 2. Type check
 uv run pytest -v                    # 3. Tests
-gourmand --full .                   # 4. AI slop detection (skip if not installed)
-podman build -f Containerfile .     # 5. Container build
+podman build -f Containerfile .     # 4. Container build
 ```
 
 **Do NOT proceed to Phase 6 until all gates pass.**
@@ -236,7 +235,7 @@ podman build -f Containerfile .     # 5. Container build
 cd ~/Projects/crunchtools/mcp-<name>
 git init && git add . && git commit -m "Initial release: mcp-<name>-crunchtools v0.1.0
 
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude <noreply@anthropic.com>"
 gh repo create crunchtools/mcp-<name> --public --source=. --push
 git tag v0.1.0 && git push origin v0.1.0
 ```
@@ -261,7 +260,7 @@ Run all 5 quality gates, then:
 ```bash
 git add . && git commit -m "Release v<VERSION>
 
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude <noreply@anthropic.com>"
 git tag v<VERSION> && git push && git push origin v<VERSION>
 ```
 
@@ -283,7 +282,7 @@ If GHCR packages are private, tell user to make them public at `https://github.c
 
 ### Step 5: Factory Watchdog Repository Monitoring
 
-The factory watchdog (`crunchtools/factory`) monitors all CrunchTools repos in Zabbix across 5 dimensions every 15 minutes. This monitors the **code factory** — GHA status, version sync, artifact sync, constitution validation, and open issues.
+The factory watchdog (`crunchtools/factory`) monitors all CrunchTools repos across 5 dimensions every 15 minutes — GHA status, version sync, artifact sync, constitution validation, and open issues. Its results surface through Nagios on lotor.
 
 #### 5a: Add to fleet-watchdog.py
 
@@ -293,41 +292,17 @@ Clone or pull `~/Projects/crunchtools/factory/` and edit `fleet-watchdog.py`:
 2. Add `"mcp-<name>"` to the `MCP_REPOS` list (alphabetical order)
 3. Commit and push
 
-#### 5b: Create Zabbix Trapper Items
+#### 5b: Add Nagios Checks
 
-Create trapper items on the `factory.crunchtools.com` host (hostid `10700`) for each monitoring dimension. All items are type `2` (Zabbix trapper).
+Add service definitions for the new repo's watchdog dimensions under `/srv/nagios.crunchtools.com/config/services/` on lotor, copying an existing `mcp-*` fleet-watchdog service block and changing only the repo name. If the check runs on the host itself, add the matching command definition to `nrpe-host.cfg` (fast checks) or `nrpe-ctr.cfg` (podman or external calls) in `crunchtools/nagios-agent` `deploy/nagios-agent/`, then copy it to `/srv/nagios-agent.crunchtools.com/config/` and restart that agent. Commit and push the changed `/srv` files (git-tracked, watched by the Git Drift check).
 
-**All repos get these items:**
+#### 5c: Validate and Restart Nagios
 
-| Item Name | Key | value_type |
-|-----------|-----|------------|
-| Fleet GHA mcp-\<name\> | `fleet.gha[mcp-<name>]` | 3 (unsigned int) |
-| Fleet Constitution mcp-\<name\> | `fleet.constitution[mcp-<name>]` | 3 (unsigned int) |
-| Fleet Constitution Violations mcp-\<name\> | `fleet.constitution.violations[mcp-<name>]` | 4 (text) |
-| Fleet Issues mcp-\<name\> | `fleet.issues.open[mcp-<name>]` | 3 (unsigned int) |
+```bash
+ssh lotor "podman exec nagios.crunchtools.com /usr/sbin/nagios -v /etc/nagios/nagios.cfg && systemctl restart nagios.crunchtools.com"
+```
 
-**MCP repos also get these items:**
-
-| Item Name | Key | value_type |
-|-----------|-----|------------|
-| Fleet Version Sync mcp-\<name\> | `fleet.version.sync[mcp-<name>]` | 3 (unsigned int) |
-| Fleet Version mcp-\<name\> | `fleet.version[mcp-<name>]` | 4 (text) |
-| Fleet Artifact Sync mcp-\<name\> | `fleet.artifact.sync[mcp-<name>]` | 3 (unsigned int) |
-
-Use the `mcp__zabbix__item_create` tool. If the Zabbix MCP server is in read-only mode, tell the user to create the items manually via the Zabbix web UI.
-
-#### 5c: Create Zabbix Triggers
-
-Create triggers on `factory.crunchtools.com` for the new repo:
-
-| Trigger | Expression | Priority |
-|---------|-----------|----------|
-| GHA failure | `last(/factory.crunchtools.com/fleet.gha[mcp-<name>])=0` | 2 (WARNING) |
-| Version desync | `last(/factory.crunchtools.com/fleet.version.sync[mcp-<name>])=0` | 4 (HIGH) |
-| Artifact desync | `last(/factory.crunchtools.com/fleet.artifact.sync[mcp-<name>])=0` | 2 (WARNING) |
-| Constitution violation | `last(/factory.crunchtools.com/fleet.constitution[mcp-<name>])=0` | 4 (HIGH) |
-
-All triggers should have tags: `{"tag": "service", "value": "fleet-watchdog"}` and `{"tag": "repo", "value": "mcp-<name>"}`.
+The `&&` means a failed validation never restarts Nagios (it would not come back up). On failure, fix the file and line it names, re-run, and restore from the `.bak` if the fix isn't obvious. Don't pipe the validation through `tail` or `grep`; a pipe hides its exit status.
 
 #### 5d: Deploy Updated Watchdog
 
@@ -340,16 +315,9 @@ systemctl --user restart factory.crunchtools.com.service
 
 Verify the new repo appears in the next watchdog run by checking the container logs.
 
-#### 5e: Service Tree (Factory Dashboard)
+#### 5e: Verify Checks
 
-The factory watchdog items must also appear in service-tree.php under the `factory.crunchtools.com` section. SSH to Lotor and edit `/srv/zabbix.crunchtools.com/code/service-tree.php`:
-
-1. Add the `fleet.gha[mcp-<name>]` item to the factory GHA status display section
-2. Add the `fleet.version.sync[mcp-<name>]` item to the version sync display section
-3. Add the `fleet.artifact.sync[mcp-<name>]` item to the artifact sync display section
-4. Add the `fleet.constitution[mcp-<name>]` item to the constitution display section
-5. Add the `fleet.issues.open[mcp-<name>]` item to the issues display section
-6. Verify the new repo appears under factory.crunchtools.com at `https://zabbix.crunchtools.com/service-tree.php`
+Use `nagios_service_status_tool` to confirm the new repo's checks appear and go green after the next watchdog run (up to 15 minutes). `nagios_host_status_tool` confirms the factory host is still OK.
 
 ### Step 6: Publish to MCP Registry
 
@@ -359,7 +327,7 @@ cd ~/Projects/crunchtools/mcp-<name> && mcp-publisher validate && mcp-publisher 
 
 ### Step 7: Update CrunchTools Website
 
-Update the MCP Servers page on crunchtools.com (WordPress page ID 6129) using `wordpress_get_page` and `wordpress_update_page`. Add the new server to the table in alphabetical order.
+The MCP Servers page on crunchtools.com (WordPress page ID 6129) is a WordPress *page*, and the wp-crunch MCP backend only exposes post tools — so this update is manual. Tell the user to add the new server to the table on that page in alphabetical order via WordPress admin (name, description, GitHub/PyPI/registry links, matching the existing rows).
 
 ---
 

@@ -28,7 +28,7 @@ Follow Semantic Versioning 2.0.0. MAJOR/MINOR/PATCH.
 ## Memory Integration
 
 - Phase 1 Step 1: Searches memory for prior context about the target service
-- Phase 9: Stores build details (server name, version, tool count, architecture decisions, deployment details)
+- Phase 8: Stores build details (server name, version, tool count, architecture decisions, deployment details)
 
 ## User Confirmation Gates
 
