@@ -1,47 +1,46 @@
 # draft-mcp-server Constitution
 
-> **Version:** 1.0.0
+> **Version:** 1.1.0
 > **Ratified:** 2026-03-03
+> **Amended:** 2026-10-02
 > **Status:** Active
-> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.17.0
+> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.18.0
 > **Profile:** Claude Skill
 
-## Overview
+The `/draft-mcp-server` skill builds a production-grade CrunchTools MCP
+server from scratch: API research, scaffolding, implementation, tests,
+quality gates, GitHub, publishing, and a memory record of the build.
 
-The `/draft-mcp-server` skill is a multi-phase workflow for building production-grade CrunchTools MCP servers from scratch. It covers API research, project scaffolding, implementation, testing, deployment, and registry publishing.
+This file holds what is specific to this skill. The fleet rules and the
+Claude Skill profile (frontmatter, phased workflow, gates, memory
+integration) apply at the inherited version and are checked against this
+repo's files by `constitution.yml`. They are not restated here.
 
-## License
+## Workflow Executor, Not Standard
 
-AGPL-3.0-or-later
+The skill defines the sequence of actions to build a server. What the server
+must look like comes from the constitution and its MCP Server profile, which
+the skill references instead of re-specifying. When those change, the skill
+builds to the new standard without an update of its own.
 
-## Versioning
+## Phase Gates
 
-Follow Semantic Versioning 2.0.0. MAJOR/MINOR/PATCH.
+- Phase 1 to Phase 2: the user approves the plan (tool inventory, auth flow,
+  file structure).
+- Phase 2 to Phase 3: all scaffolding files exist.
+- Phase 4 to Phase 5: all tests pass.
+- Phase 5 to Phase 6: the MCP Server profile's quality gates pass.
+- Phase 7 to Phase 8: the server answers test calls.
 
-## SKILL.md Standards
+## Memory Records
 
-- YAML frontmatter with `name`, `description`, `argument-hint`, `allowed-tools`
-- Organized into numbered Phases with numbered Steps
-- Phase gates prevent proceeding without user approval at critical checkpoints
-- References MCP Server profile for architecture and quality standards rather than duplicating them
+Phase 1 Step 1 searches memory for prior context on the target service;
+Phase 8 stores the build (server name, version, tool count, architecture
+decisions, deployment details).
 
-## Memory Integration
+## History
 
-- Phase 1 Step 1: Searches memory for prior context about the target service
-- Phase 8: Stores build details (server name, version, tool count, architecture decisions, deployment details)
-
-## User Confirmation Gates
-
-- Phase 1 → Phase 2: User must approve the plan (tool inventory, auth flow, file structure)
-- Phase 2 → Phase 3: All scaffolding files created
-- Phase 4 → Phase 5: All tests pass
-- Phase 5 → Phase 6: All five quality gates pass
-- Phase 7 → Phase 8: Server responds to test calls
-
-## Relationship to Constitutions
-
-This skill is a *workflow executor* — it defines the sequence of actions to build a new MCP server. The *standards* for what the server must look like come from:
-- `crunchtools/constitution` universal core — license, semver, container registry, commit standards
-- `profiles/mcp-server.md` — five-layer security, two-layer architecture, testing standards, quality gates, naming conventions, governance framework
-
-The skill deliberately avoids re-specifying constitutional requirements. When the constitution changes, the skill automatically builds to the updated standard without needing its own update.
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0.0 | 2026-03-03 | Initial constitution |
+| 1.1.0 | 2026-10-02 | Manifest under constitution v1.18.0: profile restatement removed, skill specifics kept |
