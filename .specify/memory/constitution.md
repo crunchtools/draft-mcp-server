@@ -4,7 +4,7 @@
 > **Ratified:** 2026-03-03
 > **Amended:** 2026-10-02
 > **Status:** Active
-> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.22.0
+> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.24.0
 > **Profile:** Claude Skill
 
 The `/draft-mcp-server` skill builds a production-grade CrunchTools MCP
