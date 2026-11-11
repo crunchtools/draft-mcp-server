@@ -88,11 +88,6 @@ Include this section in every plan so the user can work on these tasks in parall
    - Ensure robot account secrets (QUAY_USERNAME/QUAY_PASSWORD) are set
      in the GitHub org: https://github.com/organizations/crunchtools/settings/secrets/actions
 
-3. **GHCR Package Linking** (automatic if OCI labels are correct)
-   - The `org.opencontainers.image.source` label in the Containerfile auto-links GHCR packages to the repo on first push
-   - If the package already exists unlinked, delete it first: `gh api --method DELETE /orgs/crunchtools/packages/container/mcp-<name>`
-   - Then push again — the OCI label will auto-link and grant GITHUB_TOKEN write access
-   - After linking, make the package public at: https://github.com/orgs/crunchtools/packages
 ```
 
 **Do NOT proceed to Phase 2 until the user approves the plan.**
@@ -126,7 +121,7 @@ Read the naming convention table from the MCP Server profile (`profiles/mcp-serv
 │   ├── ISSUE_TEMPLATE/       # Copy all 3 from mcp-gitlab
 │   └── workflows/
 │       ├── ci.yml            # Lint + mypy + pytest + constitution validation
-│       ├── container.yml     # Dual push: Quay.io + GHCR (two separate jobs)
+│       ├── container.yml     # Calls constitution container-release.yml (build once, gate, promote)
 │       ├── publish.yml       # PyPI trusted publishing
 │       └── security.yml      # pip-audit + Trivy + CodeQL
 ├── .specify/
@@ -164,7 +159,7 @@ Read the naming convention table from the MCP Server profile (`profiles/mcp-serv
 - `.specify/templates/` (both templates)
 
 **Adapt from mcp-gitlab:**
-- `.github/workflows/container.yml` — two separate **jobs**: `build-and-push-quay` and `build-and-push-ghcr` with `needs:` dependency chain
+- `.github/workflows/container.yml` — copy `examples/container.yml` from crunchtools/constitution: it calls `container-release.yml@<latest constitution tag>` with `boot: mcp` and dummy `boot-env` values for the server's required settings. Quay.io is the only registry; never add a GHCR push
 - `Containerfile` — Hummingbird base, OCI labels per universal constitution Section III
 - `pyproject.toml` — name, description, dependencies, entry point per MCP Server profile Section II
 - `SECURITY.md` — change project references
@@ -276,10 +271,9 @@ curl -s "https://pypi.org/pypi/mcp-<name>-crunchtools/<VERSION>/json" | python3 
 
 ```bash
 skopeo inspect docker://quay.io/crunchtools/mcp-<name>:<VERSION>
-skopeo inspect docker://ghcr.io/crunchtools/mcp-<name>:<VERSION>
 ```
 
-If GHCR packages are private, tell user to make them public at `https://github.com/orgs/crunchtools/packages`.
+`<VERSION>` and `latest` must resolve to the same digest as `main` did when the tag was cut: the release copies the gated image, it never rebuilds.
 
 ### Step 5: Factory Watchdog Repository Monitoring
 
@@ -353,7 +347,6 @@ Architecture:   v2 (per MCP Server profile)
 GitHub:         https://github.com/crunchtools/mcp-<name>
 PyPI:           https://pypi.org/project/mcp-<name>-crunchtools/
 Quay.io:        quay.io/crunchtools/mcp-<name>:0.1.0
-GHCR:           ghcr.io/crunchtools/mcp-<name>:0.1.0
 MCP Registry:   io.github.crunchtools/<name>
 Factory:          factory.crunchtools.com — GHA, version, artifact, constitution, issues
 WordPress:      https://crunchtools.com/software/mcp-servers/
